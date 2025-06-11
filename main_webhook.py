@@ -213,3 +213,24 @@ async def final_thank_you(callback_query: types.CallbackQuery):
         print("Ошибка записи в Google Таблицу:", e)
 
     user_state.pop(user_id, None)
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "contact")
+async def handle_contact(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["contact"] = message.text
+    user_state[user_id]["step"] = "consent"
+    consent_text = (
+        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.\n"
+        "Ich kann diese jederzeit unter email widerrufen.\n"
+        "Согласие на обработку и сохранение персональных данных.\n"
+        "Мне известно, что я могу в любой момент отозвать это согласие по email."
+    )
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("Обязательно для ответа: ДА", callback_data="consent_yes"))
+    await bot.send_message(user_id, consent_text, reply_markup=markup)
+@dp.callback_query_handler(lambda c: c.data == "consent_yes")
+async def handle_consent(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(user_id, "Спасибо! Теперь напишите комментарий (если есть) или нажмите 'Готово'.")
+    user_state[user_id]["step"] = "comment"
