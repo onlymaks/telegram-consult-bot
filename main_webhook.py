@@ -86,17 +86,16 @@ async def start_topics(message: types.Message):
     user_state[user_id]["step"] = "topics_inline"
     await send_topic_selection(user_id)
 
-async def send_topic_selection(user_id):
+async def send_topic_selection(user_id, message_id=None):
     all_topics = [
-        ("A. Государственные дотации и экономия на налогах", "A"),
-        ("B. Различные Страховки (авто, адвокат, медстраховка и т.д.)", "B"),
-        ("C. Накопительные программы для детей", "C"),
-        ("D. Пенсионные Планы и дотации", "D"),
-        ("E. Потреб.Кредиты/ Финансирование Недвижимости", "E"),
+        ("A. Дотации и налоговая экономия", "A"),
+        ("B. Страховки (авто, мед, адвокат)", "B"),
+        ("C. Накопления на детей", "C"),
+        ("D. Пенсионные планы и дотации", "D"),
+        ("E. Кредиты / Недвижимость", "E"),
         ("F. Инвестиции и вложения", "F"),
-        ("G. Управление личными расходами", "G"),
-        ("I. Стратегия финансового благополучия", "I"),
-        ("J. Дополнительного дохода", "J")
+        ("G. Личные расходы", "G"),
+                ("J. Дополнительный доход", "J")
     ]
     markup = InlineKeyboardMarkup(row_width=1)
     selected = user_state[user_id].get("topics", [])
@@ -104,7 +103,12 @@ async def send_topic_selection(user_id):
         display = f"✅ {label}" if code in selected else label
         markup.add(InlineKeyboardButton(display, callback_data=f"topic_{code}"))
     markup.add(InlineKeyboardButton("✅ Готово", callback_data="topics_done"))
-    await bot.send_message(user_id, "Выберите интересующие вас темы (можно несколько):", reply_markup=markup)
+
+    if message_id:
+        await bot.edit_message_reply_markup(chat_id=user_id, message_id=message_id, reply_markup=markup)
+    else:
+        msg = await bot.send_message(user_id, "Выберите интересующие вас темы (можно несколько):", reply_markup=markup)
+        user_state[user_id]["topics_message_id"] = msg.message_id:", reply_markup=markup)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("topic_"))
 async def toggle_topic(callback_query: types.CallbackQuery):
@@ -117,7 +121,9 @@ async def toggle_topic(callback_query: types.CallbackQuery):
         selected.append(code)
     user_state[user_id]["topics"] = selected
     await bot.answer_callback_query(callback_query.id)
-    await send_topic_selection(user_id)
+    message_id = user_state[user_id].get("topics_message_id")
+    if message_id:
+        await send_topic_selection(user_id, message_id=message_id)
 
 @dp.callback_query_handler(lambda c: c.data == "topics_done")
 async def topics_done(callback_query: types.CallbackQuery):
