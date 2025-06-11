@@ -1,4 +1,3 @@
-
 import os
 from fastapi import FastAPI, Request
 from starlette.responses import Response
@@ -157,24 +156,7 @@ async def ask_comment(message: types.Message):
     user_state[user_id]["step"] = "comment"
     await message.answer("Добавьте комментарий (необязательно, можно отправить -):")
 
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "comment")
-async def ask_consent_final(message: types.Message):
-    user_id = message.from_user.id
-    user_state[user_id]["comment"] = message.text
-    user_state[user_id]["step"] = "final_consent"
-    markup = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("✅ Я согласен", callback_data="final_yes")
-    )
-    text = (
-        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.\n"
-        "Ich kann diese jederzeit unter email widerrufen.\n\n"
-        "Согласие на обработку и хранение персональных данных.\n"
-        "Мне известно, что я могу в любой момент отозвать это согласие по email.\n\n"
-        "Нажмите «✅ Я согласен», чтобы подтвердить:"
-    )
-    await message.answer(text, reply_markup=markup)
 
-@dp.callback_query_handler(lambda c: c.data == "final_yes")
 async def final_thank_you(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     data = user_state.get(user_id, {})
@@ -214,23 +196,66 @@ async def final_thank_you(callback_query: types.CallbackQuery):
 
     user_state.pop(user_id, None)
 
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "contact")
-async def handle_contact(message: types.Message):
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "email")
+async def ask_consent(message: types.Message):
     user_id = message.from_user.id
-    user_state[user_id]["contact"] = message.text
+    user_state[user_id]["email"] = message.text
     user_state[user_id]["step"] = "consent"
-    consent_text = (
-        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.\n"
-        "Ich kann diese jederzeit unter email widerrufen.\n"
-        "Согласие на обработку и сохранение персональных данных.\n"
-        "Мне известно, что я могу в любой момент отозвать это согласие по email."
+    markup = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("✅ Я согласен", callback_data="consent_yes")
     )
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Обязательно для ответа: ДА", callback_data="consent_yes"))
-    await bot.send_message(user_id, consent_text, reply_markup=markup)
+    text = (
+        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.\n"
+        "Ich kann diese jederzeit unter email widerrufen.\n\n"
+        "Согласие на обработку и хранение персональных данных.\n"
+        "Мне известно, что я могу в любой момент отозвать это согласие по email.\n\n"
+        "Нажмите «✅ Я согласен», чтобы подтвердить:"
+    )
+    await message.answer(text, reply_markup=markup)
+
 @dp.callback_query_handler(lambda c: c.data == "consent_yes")
-async def handle_consent(callback_query: types.CallbackQuery):
+async def ask_comment(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
-    await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(user_id, "Спасибо! Теперь напишите комментарий (если есть) или нажмите 'Готово'.")
     user_state[user_id]["step"] = "comment"
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(user_id, "Добавьте комментарий (необязательно, можно отправить -):")
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "comment")
+async def final_thank_you(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["comment"] = message.text
+    data = user_state.get(user_id, {})
+    await message.answer("✅ Спасибо! Мы свяжемся с вами в течение 24 часов.")
+
+    # Уведомление администратору
+    topics = ', '.join(data.get("topics", []))
+    summary = (
+        f"🆕 Новая заявка:\n"
+        f"👤 Имя: {data.get('name')}\n"
+        f"📌 Темы: {topics}\n"
+        f"💬 Мессенджер: {data.get('messenger')}\n"
+        f"📱 Телефон: {data.get('phone')}\n"
+        f"📧 Email: {data.get('email')}\n"
+        f"💬 Комментарий: {data.get('comment')}"
+    )
+    await bot.send_message(ADMIN_CHAT_ID, summary)
+
+    # Запись в Google Таблицу
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+        client = gspread.authorize(creds)
+        sheet = client.open(GOOGLE_SHEET_NAME).sheet1
+        sheet.append_row([
+            data.get("name", ""),
+            topics,
+            data.get("messenger", ""),
+            data.get("phone", ""),
+            data.get("email", ""),
+            "ДА",
+            data.get("comment", "")
+        ])
+    except Exception as e:
+        print("Ошибка записи в Google Таблицу:", e)
+
+    user_state.pop(user_id, None)
