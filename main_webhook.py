@@ -149,9 +149,6 @@ async def ask_email(message: types.Message):
     user_state[user_id]["step"] = "email"
     await message.answer("Введите ваш email:")
 
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "email")
-async def ask_comment(message: types.Message):
-    user_id = message.from_user.id
     user_state[user_id]["email"] = message.text
     user_state[user_id]["step"] = "comment"
     await message.answer("Добавьте комментарий (необязательно, можно отправить -):")
@@ -196,9 +193,6 @@ async def final_thank_you(callback_query: types.CallbackQuery):
 
     user_state.pop(user_id, None)
 
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "email")
-async def ask_consent(message: types.Message):
-    user_id = message.from_user.id
     user_state[user_id]["email"] = message.text
     user_state[user_id]["step"] = "consent"
     markup = InlineKeyboardMarkup().add(
@@ -219,6 +213,23 @@ async def ask_comment(callback_query: types.CallbackQuery):
     user_state[user_id]["step"] = "comment"
     await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, "Добавьте комментарий (необязательно, можно отправить -):")
+
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "email")
+async def ask_consent(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["email"] = message.text
+    user_state[user_id]["step"] = "consent"
+    markup = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("✅ Я согласен", callback_data="consent_yes")
+    )
+    text = (
+        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.\n"
+        "Ich kann diese jederzeit unter email widerrufen.\n\n"
+        "Согласие на обработку и хранение персональных данных.\n"
+        "Мне известно, что я могу в любой момент отозвать это согласие по email."
+    )
+    await message.answer(text, reply_markup=markup)
 
 @dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "comment")
 async def final_thank_you(message: types.Message):
