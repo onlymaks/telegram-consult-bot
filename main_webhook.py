@@ -4,6 +4,9 @@ from fastapi import FastAPI, Request
 from starlette.responses import Response
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import json
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_HOST = os.getenv("WEBHOOK_URL")
@@ -11,11 +14,12 @@ WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 WEBAPP_HOST = "0.0.0.0"
 WEBAPP_PORT = int(os.getenv("PORT", 8000))
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID"))
+GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME")
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# Контекст
 Bot.set_current(bot)
 Dispatcher.set_current(dp)
 
@@ -40,10 +44,7 @@ async def webhook_handler(request: Request):
     await dp.process_update(update)
     return Response(status_code=200)
 
-# ====== Сценарий анкеты ======
 user_state = {}
-
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 @dp.message_handler(commands=["start"])
 async def handle_start(message: types.Message):
@@ -51,9 +52,13 @@ async def handle_start(message: types.Message):
     if args == "consult":
         markup = InlineKeyboardMarkup().add(InlineKeyboardButton("✅ Я согласен", callback_data="consent_given"))
         text = (
-            "👋 Добро пожаловать! Этот бот поможет вам записаться на консультацию.\n\n"
+            "👋 Добро пожаловать! Этот бот поможет вам записаться на консультацию.
+
+"
             "📌 Мы соблюдаем правила обработки персональных данных (Datenschutz). "
-            "Вы можете отозвать согласие в любой момент.\n\n"
+            "Вы можете отозвать согласие в любой момент.
+
+"
             "Пожалуйста, подтвердите согласие, чтобы продолжить:"
         )
         await message.answer(text, reply_markup=markup)
@@ -73,16 +78,16 @@ async def ask_topics(message: types.Message):
     user_state[user_id]["name"] = message.text
     user_state[user_id]["step"] = "topics"
     topics = [
-        "A) Государственные субсидии и экономия на налогах",
-        "B) Различные разновидности страхования",
-        "C) Управление личными расходами",
-        "D) Финансирование недвижимости",
-        "E) Стратегия финансового благополучия",
-        "F) Здравоохранение",
-        "G) Пенсионные Планы",
-        "H) Потребительское кредитование",
-        "I) Накопительные программы для детей",
-        "J) Создание дополнительного дохода"
+        "Государственные субсидии и экономия на налогах",
+        "Различные разновидности страхования",
+        "Управление личными расходами",
+        "Финансирование недвижимости",
+        "Стратегия финансового благополучия",
+        "Здравоохранение",
+        "Пенсионные Планы",
+        "Потребительское кредитование",
+        "Образование для детей и накопительные программы",
+        "Создание дополнительного дохода"
     ]
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     for topic in topics:
@@ -152,5 +157,21 @@ async def final_thank_you(callback_query: types.CallbackQuery):
         f"📧 Email: {data.get('email')}"
     )
     await bot.send_message(user_id, "✅ Спасибо! Мы свяжемся с вами в течение 24 часов.")
-    await bot.send_message(int(os.getenv("ADMIN_CHAT_ID", user_id)), summary)
+    await bot.send_message(ADMIN_CHAT_ID, summary)
+
+    # Запись в Google Sheets
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+    client = gspread.authorize(creds)
+    sheet = client.open(GOOGLE_SHEET_NAME).sheet1
+    sheet.append_row([
+        data.get("name", ""),
+        data.get("topics", ""),
+        data.get("messenger", ""),
+        data.get("phone", ""),
+        data.get("email", ""),
+        "ДА",
+        ""
+    ])
+
     user_state.pop(user_id, None)
