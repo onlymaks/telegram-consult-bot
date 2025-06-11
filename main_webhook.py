@@ -81,7 +81,7 @@ async def handle_name(message: types.Message):
     user_id = message.from_user.id
     name = message.text.strip()
     if len(name) < 3:
-        await message.answer("❌ Имя должно содержать минимум 3 символа. Повторите ввод:")
+        await message.answer("❌ Некорректное имя. Введите ещё раз (минимум 3 символа):")
         return
     user_state[user_id]["name"] = name
     user_state[user_id]["step"] = "topics"
@@ -104,8 +104,11 @@ async def send_topic_selection(user_id, message_id=None):
         display = f"✅ {label}" if code in selected else label
         markup.add(InlineKeyboardButton(display, callback_data=f"topic_{code}"))
     markup.add(InlineKeyboardButton("✅ Готово", callback_data="topics_done"))
-    msg = await bot.send_message(user_id, "Выберите интересующие вас темы (можно несколько):", reply_markup=markup)
-    user_state[user_id]["topics_message_id"] = msg.message_id
+    if not message_id:
+        msg = await bot.send_message(user_id, "Выберите интересующие вас темы (можно несколько):", reply_markup=markup)
+        user_state[user_id]["topics_message_id"] = msg.message_id
+    else:
+        await bot.edit_message_reply_markup(chat_id=user_id, message_id=message_id, reply_markup=markup)
     user_state[user_id]["topics"] = []
 
 @dp.callback_query_handler(lambda c: c.data.startswith("topic_"))
