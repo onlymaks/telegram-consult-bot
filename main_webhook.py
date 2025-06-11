@@ -97,7 +97,7 @@ async def handle_email(message: types.Message, state: FSMContext):
 async def handle_confirm(callback_query: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
 # Строка заменена и завершена корректно
-text = f"🎉 Спасибо, {data['name']}!"\nТемы: {', '.join(data['topics'])}
+text = f"🎉 Спасибо, {data['name']}!\nТемы: {', '.join(data['topics'])}"
 Email: {data['email']}"
     await bot.send_message(callback_query.from_user.id, text)
     await state.finish()
