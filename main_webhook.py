@@ -43,6 +43,7 @@ async def webhook_handler(request: Request):
 
 @dp.message_handler(commands=["start"])
 async def handle_start(message: types.Message):
+    user_state.pop(message.from_user.id, None)
     args = message.get_args()
     if args == "consult":
         await launch_consult(message)
@@ -54,6 +55,7 @@ async def handle_start(message: types.Message):
 
 @dp.callback_query_handler(lambda c: c.data == "open_consult")
 async def handle_consult_button(callback_query: types.CallbackQuery):
+    user_state.pop(callback_query.from_user.id, None)
     await bot.answer_callback_query(callback_query.id)
     await launch_consult(callback_query.message)
 
