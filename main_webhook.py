@@ -1,3 +1,4 @@
+from oauth2client.service_account import ServiceAccountCredentials
 import os
 from fastapi import FastAPI, Request
 from starlette.responses import Response
@@ -5,7 +6,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils import json
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_HOST = os.getenv("WEBHOOK_URL")
@@ -14,6 +15,22 @@ WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 WEBAPP_PORT = int(os.getenv("PORT", 8000))
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
 GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME")
+
+
+GOOGLE_CREDENTIALS_DICT = {
+  "type": "service_account",
+  "project_id": "telegram-bot-sheets-462500",
+  "private_key_id": "fe96728f4dcc21bb4c393b84370793803eff544d",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCyN+A+qMA1W+67\nvhBPEBjkdUmrf6hBMRQMrhQEs/oCgasgRrJ5Fh4w8URa71hJodjJNyk2cvY1HohQ\n8jkEuvuMOnHhPvPD5msLhfrAE1dNMu6reT9yQxoKyBIUC7YbgwOxMGP40sZfrY07\nbSIO0YcSN42WyE0zHArp+A5/Tb3Zto9FXV1ry2a5LTq5U9gB6YGztlYhyFWcBMWV\nQo09xtiRXwT9S8Ee4DXJd037p0epc40gcPD20RcXA6F24gothcZvmlPQHihaE5b8\ncfysbEOximxVzD2Q1/1WBVAAHIvHdGBiSkN4RT82R42bbc99ju3dRVbJqIaxwgtY\nJiUIcJTrAgMBAAECggEAHVoPMw1Z8q/RxtahGv8SCnZitr3PTpqwVvzzS77/Oxse\nEwfHFyLpwAfMc+mdhysCaElkc+pFMIR3JlXDxvVWE/IAQCe9FWjv/QrePHTdrleS\nxWeyZ7WI0XkYDnh1+rFTkgLf7uLP9ywUlFKqBvoX8+EgZFKtnEWkaoUHO4zolWAx\nyPs6fmNtMXe7KGDjy7Swg3uh2tULyDJWdkRbyAcuqE+F0pgbFCRGIBq6GYiQuO32\nVZ7gZ1kKSuFhE620SA8k/ewZWaP5XTmAvZv+DW49uqYsOte4sSfYTBqUgzDfV0WS\nq8XImeIP/66np6IdiiCTvkMxVgT8d5rHJqSbBXuQUQKBgQDcQA17jFpU/H7SGhHR\nQbzk12cGcX1vtVE9NYMTsqTYwC5ywUt56+fZeuLsNPsSoRFY8jX712fmvOlS+14R\nuWmK1o1mopGZzmgpQyNums7hJB67NXte9UDZMRzZsTjWjkLfLu1/mWlIpD7QnoZH\n6GBSyieitTGqoQys5rb3N0ur4wKBgQDPJUp8teHlXy4rJLlEOHNZaVjagztA6mwQ\nVzS5wPLtYoDWHIWIC4sKLgDGRPH+foVGoodP1E92u15aeWz3I44fohm+S1y/+e2V\n9ERrdGxdYnRgG0PkKR3QmqMlCIiu0vr8trkzGSY3yLwzj6yojWhml2YJLn2dkjd1\nOcpnpXVRWQKBgFEKOGvHPs2agkdoVDn8yDYjk8LpK1BZFOVCtVIgH0upmu2add0M\nkiiRcMGc1O0L2sgxhu99WLursuZXm0tGP7FYNHsZQh2ntufHzle6Gnj4w1361cQg\n1ZWU3pqy/MjlW3GnYLfciMKzvHEigyIePKL5ww+5P+cajwFnetcHv44lAoGAHqsv\nvw0St+oCpOKYB3CwK1G8lQWO9Up/21997+6QSPMnjgvE/WJwIH61IKW+imZjBxUz\nIW+WoEaXbp/BsUlzVl2ioBj6T3YKZgQ3SQ2AqcbU4hHHWHV585Ohie8chX25KUdI\nXjdgACxZKO0hrAbbqSzLL5rRgE3Qpit7OyM1HmkCgYEAsY95ZhfCxiuAfjgpO3iY\nHzCQiCdUdFSyZKBmIqM2yUVL6u/lePjpELKOD8F86Gg9fa5IwDTViARqyLDpsCXL\niOTSth94q1EP1mYp07AkghjeujQRQ/19AgiEEzWqV+pUFvROEnjxh9OHTlYuIVuS\npNWD+igb9RM8ZAzvYlqJGac=\n-----END PRIVATE KEY-----\n",
+  "client_email": "telegram-sheets-bot@telegram-bot-sheets-462500.iam.gserviceaccount.com",
+  "client_id": "101678910065228926953",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/telegram-sheets-bot%40telegram-bot-sheets-462500.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
@@ -172,7 +189,7 @@ async def final_thank_you(callback_query: types.CallbackQuery):
     # Запись в Google Таблицу
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(GOOGLE_CREDENTIALS_DICT, scope)
         client = gspread.authorize(creds)
         sheet = client.open(GOOGLE_SHEET_NAME).sheet1
         sheet.append_row([
@@ -236,7 +253,7 @@ async def final_thank_you(message: types.Message):
     # Запись в Google Таблицу
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(GOOGLE_CREDENTIALS_DICT, scope)
         client = gspread.authorize(creds)
         sheet = client.open(GOOGLE_SHEET_NAME).sheet1
         sheet.append_row([
