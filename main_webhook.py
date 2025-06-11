@@ -78,11 +78,53 @@ async def ask_name(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, "Пожалуйста, введите ваше имя:")
 
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "topics_select")
+async def ask_topics_inline(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["topics"] = []
+    user_state[user_id]["step"] = "topics_inline"
+    topics = [
+        ("Субсидии и налоги", "t1"),
+        ("Страхование", "t2"),
+        ("Расходы", "t3"),
+        ("Недвижимость", "t4"),
+        ("Финансовое благополучие", "t5"),
+        ("Здравоохранение", "t6"),
+        ("Пенсии", "t7"),
+        ("Кредиты", "t8"),
+        ("Дети", "t9"),
+        ("Доход", "t10")
+    ]
+    markup = InlineKeyboardMarkup(row_width=2)
+    for name, code in topics:
+        markup.insert(InlineKeyboardButton(name, callback_data=f"topic_{code}"))
+    markup.add(InlineKeyboardButton("✅ Готово", callback_data="topics_done"))
+    await message.answer("Выберите интересующие вас темы (можно несколько):", reply_markup=markup)
+
+@dp.callback_query_handler(lambda c: c.data.startswith("topic_"))
+async def collect_topics(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    code = callback_query.data.replace("topic_", "")
+    if "topics" not in user_state[user_id]:
+        user_state[user_id]["topics"] = []
+    user_state[user_id]["topics"].append(code)
+    await bot.answer_callback_query(callback_query.id, text="Добавлено!")
+
+@dp.callback_query_handler(lambda c: c.data == "topics_done")
+async def topics_done(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    user_state[user_id]["step"] = "messenger"
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(KeyboardButton("Telegram"), KeyboardButton("WhatsApp"), KeyboardButton("Viber"))
+    await bot.send_message(user_id, "Выберите удобный мессенджер для связи:", reply_markup=markup)
+
+
 @dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "name")
 async def ask_topics(message: types.Message):
     user_id = message.from_user.id
     user_state[user_id]["name"] = message.text
-    user_state[user_id]["step"] = "topics"
+    user_state[user_id]["step"] = "topics_select"
     topics = [
         "Государственные субсидии и налоги",
         "Страхование",
@@ -124,10 +166,33 @@ async def ask_email(message: types.Message):
     await message.answer("Введите ваш email:")
 
 @dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "email")
+async def ask_comment(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["email"] = message.text
+    user_state[user_id]["step"] = "comment"
+    await message.answer("Добавьте комментарий (необязательно, можно пропустить или отправить -):")
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "comment")
+async def ask_consent_final(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["comment"] = message.text
+    user_state[user_id]["step"] = "final_consent"
+    markup = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("✅ Я согласен", callback_data="final_yes")
+    )
+    text = (
+        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.\n"
+        "Ich kann diese jederzeit unter email widerrufen.\n\n"
+        "Согласие на обработку и хранение персональных данных.\n"
+        "Мне известно, что я могу в любой момент отозвать это согласие по email.\n\n"
+        "Нажмите «✅ Я согласен», чтобы подтвердить:"
+    )
+    await message.answer(text, reply_markup=markup)
+
 async def ask_consent_final(message: types.Message):
     user_id = message.from_user.id
     user_state[user_id]["email"] = message.text
-    user_state[user_id]["step"] = "final_consent"
+    user_state[user_id]["step"] = "comment"
     markup = InlineKeyboardMarkup().add(
         InlineKeyboardButton("✅ Я согласен", callback_data="final_yes")
     )
@@ -173,7 +238,7 @@ async def final_thank_you(callback_query: types.CallbackQuery):
             data.get("phone", ""),
             data.get("email", ""),
             "ДА",
-            ""
+            data.get("comment", "")
         ])
     except Exception as e:
         print("Ошибка записи в Google Таблицу:", e)
