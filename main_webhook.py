@@ -54,10 +54,7 @@ async def handle_start(message: types.Message):
 
 @dp.callback_query_handler(lambda c: c.data == "open_consult")
 async def handle_consult_button(callback_query: types.CallbackQuery):
-    try:
-        await bot.answer_callback_query(callback_query.id)
-    except Exception:
-        pass  # Пропуск, если callback_query устарел
+    await bot.answer_callback_query(callback_query.id)
     await launch_consult(callback_query.message)
 
 async def launch_consult(message):
@@ -76,10 +73,7 @@ async def launch_consult(message):
 async def ask_name(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     user_state[user_id] = {"step": "topics_select"}
-    try:
-        await bot.answer_callback_query(callback_query.id)
-    except Exception:
-        pass  # Пропуск, если callback_query устарел
+    await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, "Пожалуйста, введите ваше имя:")
 
 # Этот блок добавлен после ввода имени
@@ -128,10 +122,7 @@ async def toggle_topic(callback_query: types.CallbackQuery):
     else:
         selected.append(code)
     user_state[user_id]["topics"] = selected
-    try:
-        await bot.answer_callback_query(callback_query.id)
-    except Exception:
-        pass  # Пропуск, если callback_query устарел
+    await bot.answer_callback_query(callback_query.id)
     message_id = user_state[user_id].get("topics_message_id")
     if message_id:
         await send_topic_selection(user_id, message_id=message_id)
@@ -162,10 +153,7 @@ async def ask_email(message: types.Message):
 async def final_thank_you(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     data = user_state.get(user_id, {})
-    try:
-        await bot.answer_callback_query(callback_query.id)
-    except Exception:
-        pass  # Пропуск, если callback_query устарел
+    await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, "✅ Спасибо! Мы свяжемся с вами в течение 24 часов.")
 
     # Уведомление администратору
@@ -222,10 +210,7 @@ async def ask_consent(message: types.Message):
 async def ask_comment(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     user_state[user_id]["step"] = "comment"
-    try:
-        await bot.answer_callback_query(callback_query.id)
-    except Exception:
-        pass  # Пропуск, если callback_query устарел
+    await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, "Добавьте комментарий (необязательно, можно отправить -):")
 
 @dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "comment")
