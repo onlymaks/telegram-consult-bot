@@ -3,11 +3,12 @@ import os
 from fastapi import FastAPI, Request
 from starlette.responses import Response
 from aiogram import Bot, Dispatcher, types
-from aiogram.utils import json
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.utils import json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# === Конфигурация ===
 API_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_HOST = os.getenv("WEBHOOK_URL")
 WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
@@ -17,14 +18,15 @@ WEBAPP_PORT = int(os.getenv("PORT", 8000))
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID"))
 GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME")
 
+# === Инициализация ===
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
-
 Bot.set_current(bot)
 Dispatcher.set_current(dp)
-
 app = FastAPI()
+user_state = {}
 
+# === Обработчики FastAPI ===
 @app.get("/")
 async def root():
     return {"status": "OK — бот запущен"}
@@ -44,31 +46,18 @@ async def webhook_handler(request: Request):
     await dp.process_update(update)
     return Response(status_code=200)
 
-user_state = {}
-
+# === Telegram сценарий ===
 @dp.message_handler(commands=["start"])
 async def handle_start(message: types.Message):
     args = message.get_args()
     if args == "consult":
-        markup = InlineKeyboardMarkup().add(InlineKeyboardButton("✅ Я согласен", callback_data="consent_given"))
+        markup = InlineKeyboardMarkup().add(
+            InlineKeyboardButton("✅ Я согласен", callback_data="consent_given")
+        )
         text = (
             "👋 Добро пожаловать! Этот бот поможет вам записаться на консультацию.\n\n"
-            "📌 Мы соблюдаем правила обработки персональных данных (Datenschutz). Вы можете отозвать согласие в любой момент.\n\n"
-            "Пожалуйста, подтвердите согласие, чтобы продолжить:"
-        )
-        await message.answer(text, reply_markup=markup)
-    else:
-        await message.answer("👋 Привет! Напишите, чем я могу помочь.")
-    args = message.get_args()
-    if args == "consult":
-        markup = InlineKeyboardMarkup().add(InlineKeyboardButton("✅ Я согласен", callback_data="consent_given"))
-            "👋 Добро пожаловать! Этот бот поможет вам записаться на консультацию.
-
-"
             "📌 Мы соблюдаем правила обработки персональных данных (Datenschutz). "
-            "Вы можете отозвать согласие в любой момент.
-
-"
+            "Вы можете отозвать согласие в любой момент.\n\n"
             "Пожалуйста, подтвердите согласие, чтобы продолжить:"
         )
         await message.answer(text, reply_markup=markup)
@@ -132,18 +121,14 @@ async def ask_consent_final(message: types.Message):
     user_id = message.from_user.id
     user_state[user_id]["email"] = message.text
     user_state[user_id]["step"] = "final_consent"
-    markup = InlineKeyboardMarkup().add(InlineKeyboardButton("✅ Я согласен", callback_data="final_yes"))
+    markup = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("✅ Я согласен", callback_data="final_yes")
+    )
     text = (
-        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.
-"
-        "Ich kann diese jederzeit unter email widerrufen.
-
-"
-        "Согласие на обработку и хранение персональных данных.
-"
-        "Мне известно, что я могу в любой момент отозвать это согласие по email.
-
-"
+        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.\n"
+        "Ich kann diese jederzeit unter email widerrufen.\n\n"
+        "Согласие на обработку и хранение персональных данных.\n"
+        "Мне известно, что я могу в любой момент отозвать это согласие по email.\n\n"
         "Нажмите «✅ Я согласен», чтобы подтвердить:"
     )
     await message.answer(text, reply_markup=markup)
@@ -154,22 +139,17 @@ async def final_thank_you(callback_query: types.CallbackQuery):
     data = user_state.get(user_id, {})
     await bot.answer_callback_query(callback_query.id)
     summary = (
-        f"🆕 Новая заявка:
-"
-        f"👤 Имя: {data.get('name')}
-"
-        f"📌 Тема: {data.get('topics')}
-"
-        f"💬 Мессенджер: {data.get('messenger')}
-"
-        f"📱 Телефон: {data.get('phone')}
-"
+        f"🆕 Новая заявка:\n"
+        f"👤 Имя: {data.get('name')}\n"
+        f"📌 Тема: {data.get('topics')}\n"
+        f"💬 Мессенджер: {data.get('messenger')}\n"
+        f"📱 Телефон: {data.get('phone')}\n"
         f"📧 Email: {data.get('email')}"
     )
     await bot.send_message(user_id, "✅ Спасибо! Мы свяжемся с вами в течение 24 часов.")
     await bot.send_message(ADMIN_CHAT_ID, summary)
 
-    # Запись в Google Sheets
+    # Google Sheets
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
     client = gspread.authorize(creds)
