@@ -1,28 +1,31 @@
+
+import logging
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils.callback_data import CallbackData
 from fastapi import FastAPI
-import logging
+import uvicorn
+import asyncio
 import os
 
-API_TOKEN = os.getenv("TELEGRAM_API_TOKEN", "your_bot_token_here")
+API_TOKEN = os.getenv("API_TOKEN")
+
+# Включаем логирование
+logging.basicConfig(level=logging.INFO)
+
+# Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
+
+# Хранилище состояний
+user_state = {}
+
+# FastAPI app
 app = FastAPI()
 
-user_state = {}
-callback_data = CallbackData("action", "value")
-
-@dp.message_handler(commands=["start"])
-async def start_command(message: types.Message):
-    if message.get_args() == "consult":
-        await launch_consult(message)
-    else:
-        await message.answer("Привет! Отправь команду /start?start=consult чтобы записаться.")
-
-async def launch_consult(message):
+@dp.message_handler(commands=['start'])
+async def launch_consult(message: types.Message):
     user_id = message.chat.id
-    user_state[user_id] = {}  # сброс состояния пользователя при старте
+    user_state[user_id] = {}  # СБРОС состояния при новом заходе
 
     markup = InlineKeyboardMarkup().add(
         InlineKeyboardButton("✅ Я согласен", callback_data="consent_given")
@@ -35,30 +38,35 @@ async def launch_consult(message):
     )
     await bot.send_message(message.chat.id, text, reply_markup=markup)
 
-@dp.callback_query_handler(lambda c: c.data == "consent_given")
-async def consent_given(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
-    user_state[user_id]["step"] = "name"
-    await bot.send_message(user_id, "Как вас зовут?")
+@dp.callback_query_handler(lambda c: c.data == 'consent_given')
+async def handle_consent(callback_query: types.CallbackQuery):
+    await bot.send_message(callback_query.from_user.id, "✅ Спасибо! Введите ваше имя:")
+    user_state[callback_query.from_user.id] = {"step": "name"}
+    await bot.answer_callback_query(callback_query.id)
 
-@dp.message_handler(lambda message: user_state.get(message.chat.id, {}).get("step") == "name")
-async def process_name(message: types.Message):
+@dp.message_handler()
+async def handle_message(message: types.Message):
     user_id = message.chat.id
-    user_state[user_id]["name"] = message.text
-    user_state[user_id]["step"] = "email"
-    await message.answer("Введите ваш Email:")
+    state = user_state.get(user_id, {})
 
-@dp.message_handler(lambda message: user_state.get(message.chat.id, {}).get("step") == "email")
-async def process_email(message: types.Message):
-    user_id = message.chat.id
-    user_state[user_id]["email"] = message.text
-    user_state[user_id]["step"] = "done"
-    await message.answer("Спасибо, вы успешно записались на консультацию!")
+    if state.get("step") == "name":
+        user_state[user_id]["name"] = message.text
+        user_state[user_id]["step"] = "email"
+        await message.answer("✉️ Теперь введите ваш email:")
+    elif state.get("step") == "email":
+        user_state[user_id]["email"] = message.text
+        user_state[user_id]["step"] = "done"
+        await message.answer("✅ Спасибо за регистрацию!")
+    else:
+        await message.answer("Пожалуйста, начните сначала с команды /start.")
 
-# webhook route for Render/FastAPI compatibility
-@app.post("/webhook/{token}")
-async def webhook(token: str, update: dict):
-    if token == API_TOKEN:
-        telegram_update = types.Update.to_object(update)
-        await dp.process_update(telegram_update)
-    return {"ok": True}
+# Запуск webhook (в продакшене можно настроить отдельно)
+@app.on_event("startup")
+async def on_startup():
+    loop = asyncio.get_event_loop()
+    loop.create_task(dp.start_polling())
+
+# FastAPI обёртка
+@app.get("/")
+async def root():
+    return {"status": "бот работает"}
