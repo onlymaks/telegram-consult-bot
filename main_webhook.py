@@ -85,8 +85,36 @@ async def start_topics(message: types.Message):
         return
     user_state[user_id]["name"] = message.text.strip()
     user_state[user_id]["topics"] = []
-    user_state[user_id]["step"] = "topics_inline"
+    user_state[user_id]["step"] = "topics_select"
     await send_topic_selection(user_id)
+
+
+async def send_topic_selection(user_id, message_id=None):
+    all_topics = [
+        ("A. Дотации и налоговая экономия", "A"),
+        ("B. Страховки (авто, мед, адвокат)", "B"),
+        ("C. Накопления на детей", "C"),
+        ("D. Пенсионные планы и дотации", "D"),
+        ("E. Кредиты / Недвижимость", "E"),
+        ("F. Инвестиции и вложения", "F"),
+        ("G. Личные расходы", "G"),
+        ("J. Дополнительный доход", "J")
+    ]
+    markup = InlineKeyboardMarkup(row_width=1)
+    selected = user_state.get(user_id, {}).get("topics", [])
+    for label, code in all_topics:
+        display = f"✅ {label}" if code in selected else label
+        markup.add(InlineKeyboardButton(display, callback_data=f"topic_{code}"))
+    markup.add(InlineKeyboardButton("✅ Готово", callback_data="topics_done"))
+
+    if message_id:
+        await bot.edit_message_reply_markup(chat_id=user_id, message_id=message_id, reply_markup=markup)
+    else:
+        msg = await bot.send_message(user_id, "Выберите интересующие вас темы (можно несколько):", reply_markup=markup)
+        if user_state.get(user_id):
+            user_state[user_id]["topics_message_id"] = msg.message_id
+
+
     user_state.pop(user_id, None)
 
 @dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "email")
