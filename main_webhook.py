@@ -95,10 +95,10 @@ async def send_topic_selection(user_id, message_id=None):
         ("E. Кредиты / Недвижимость", "E"),
         ("F. Инвестиции и вложения", "F"),
         ("G. Личные расходы", "G"),
-                ("J. Дополнительный доход", "J")
+        ("J. Дополнительный доход", "J")
     ]
     markup = InlineKeyboardMarkup(row_width=1)
-    selected = user_state[user_id].get("topics", [])
+    selected = user_state.get(user_id, {}).get("topics", [])
     for label, code in all_topics:
         display = f"✅ {label}" if code in selected else label
         markup.add(InlineKeyboardButton(display, callback_data=f"topic_{code}"))
@@ -108,11 +108,14 @@ async def send_topic_selection(user_id, message_id=None):
         await bot.edit_message_reply_markup(chat_id=user_id, message_id=message_id, reply_markup=markup)
     else:
         msg = await bot.send_message(user_id, "Выберите интересующие вас темы (можно несколько):", reply_markup=markup)
-        user_state[user_id]["topics_message_id"] = msg.message_id
+        if user_state.get(user_id):
+            user_state[user_id]["topics_message_id"] = msg.message_id:", reply_markup=markup)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("topic_"))
 async def toggle_topic(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
+    if user_id not in user_state:
+        user_state[user_id] = {"topics": [], "step": "topics_inline"}
     code = callback_query.data.replace("topic_", "")
     selected = user_state[user_id].get("topics", [])
     if code in selected:
