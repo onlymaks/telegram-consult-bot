@@ -13,6 +13,7 @@ WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL") + WEBHOOK_PATH
 
 bot = Bot(token=API_TOKEN)
 Bot.set_current(bot)
+Bot.set_current(bot)
 dp = Dispatcher(bot)
 app = FastAPI()
 
