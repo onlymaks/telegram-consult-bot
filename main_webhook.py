@@ -108,7 +108,7 @@ async def send_topic_selection(user_id, message_id=None):
         await bot.edit_message_reply_markup(chat_id=user_id, message_id=message_id, reply_markup=markup)
     else:
         msg = await bot.send_message(user_id, "Выберите интересующие вас темы (можно несколько):", reply_markup=markup)
-        user_state[user_id]["topics_message_id"] = msg.message_id:", reply_markup=markup)
+        user_state[user_id]["topics_message_id"] = msg.message_id
 
 @dp.callback_query_handler(lambda c: c.data.startswith("topic_"))
 async def toggle_topic(callback_query: types.CallbackQuery):
