@@ -107,6 +107,8 @@ async def send_topic_selection(user_id, message_id=None):
         markup.add(InlineKeyboardButton(display, callback_data=f"topic_{code}"))
     markup.add(InlineKeyboardButton("✅ Готово", callback_data="topics_done"))
 
+        await bot.send_message(user_id, "📌 Темы загружены...")
+
     if message_id:
         await bot.edit_message_reply_markup(chat_id=user_id, message_id=message_id, reply_markup=markup)
     else:
