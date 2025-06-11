@@ -149,10 +149,6 @@ async def ask_email(message: types.Message):
     user_state[user_id]["step"] = "email"
     await message.answer("Введите ваш email:")
 
-    user_state[user_id]["email"] = message.text
-    user_state[user_id]["step"] = "comment"
-    await message.answer("Добавьте комментарий (необязательно, можно отправить -):")
-
 
 async def final_thank_you(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
