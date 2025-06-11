@@ -11,10 +11,14 @@ WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 WEBAPP_HOST = "0.0.0.0"
 WEBAPP_PORT = int(os.getenv("PORT", 8000))
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
+
+# Контекст
+Bot.set_current(bot)
+Dispatcher.set_current(dp)
+
 app = FastAPI()
 
 @app.get("/")
@@ -36,9 +40,10 @@ async def webhook_handler(request: Request):
     await dp.process_update(update)
     return Response(status_code=200)
 
-# ====== START CONSULTATION ======
+# ====== Сценарий анкеты ======
+user_state = {}
 
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 @dp.message_handler(commands=["start"])
 async def handle_start(message: types.Message):
@@ -56,15 +61,96 @@ async def handle_start(message: types.Message):
         await message.answer("👋 Привет! Напишите, чем я могу помочь.")
 
 @dp.callback_query_handler(lambda c: c.data == "consent_given")
-async def step_ask_name(callback_query: types.CallbackQuery):
+async def ask_name(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    user_state[user_id] = {"step": "name"}
     await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(callback_query.from_user.id, "Пожалуйста, введите ваше имя:")
-    # Здесь позже начнется FSM или логика шагов
+    await bot.send_message(user_id, "Пожалуйста, введите ваше имя:")
 
-# Тут ты можешь добавить остальные шаги сценария:
-# - выбор тем
-# - мессенджер
-# - телефон
-# - email
-# - подтверждение
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "name")
+async def ask_topics(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["name"] = message.text
+    user_state[user_id]["step"] = "topics"
+    topics = [
+        "A) Государственные субсидии и экономия на налогах",
+        "B) Различные разновидности страхования",
+        "C) Управление личными расходами",
+        "D) Финансирование недвижимости",
+        "E) Стратегия финансового благополучия",
+        "F) Здравоохранение",
+        "G) Пенсионные Планы",
+        "H) Потребительское кредитование",
+        "I) Накопительные программы для детей",
+        "J) Создание дополнительного дохода"
+    ]
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    for topic in topics:
+        markup.add(KeyboardButton(topic))
+    await message.answer("Выберите интересующие вас темы (по одной):", reply_markup=markup)
 
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "topics")
+async def ask_messenger(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["topics"] = message.text
+    user_state[user_id]["step"] = "messenger"
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(KeyboardButton("Telegram"), KeyboardButton("WhatsApp"), KeyboardButton("Viber"))
+    await message.answer("Выберите удобный мессенджер для связи:", reply_markup=markup)
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "messenger")
+async def ask_phone(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["messenger"] = message.text
+    user_state[user_id]["step"] = "phone"
+    await message.answer("Введите номер телефона (формат +49 XXX XXX XX XX):")
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "phone")
+async def ask_email(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["phone"] = message.text
+    user_state[user_id]["step"] = "email"
+    await message.answer("Введите ваш email:")
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "email")
+async def ask_consent_final(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["email"] = message.text
+    user_state[user_id]["step"] = "final_consent"
+    markup = InlineKeyboardMarkup().add(InlineKeyboardButton("✅ Я согласен", callback_data="final_yes"))
+    text = (
+        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.
+"
+        "Ich kann diese jederzeit unter email widerrufen.
+
+"
+        "Согласие на обработку и хранение персональных данных.
+"
+        "Мне известно, что я могу в любой момент отозвать это согласие по email.
+
+"
+        "Нажмите «✅ Я согласен», чтобы подтвердить:"
+    )
+    await message.answer(text, reply_markup=markup)
+
+@dp.callback_query_handler(lambda c: c.data == "final_yes")
+async def final_thank_you(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    data = user_state.get(user_id, {})
+    await bot.answer_callback_query(callback_query.id)
+    summary = (
+        f"🆕 Новая заявка:
+"
+        f"👤 Имя: {data.get('name')}
+"
+        f"📌 Тема: {data.get('topics')}
+"
+        f"💬 Мессенджер: {data.get('messenger')}
+"
+        f"📱 Телефон: {data.get('phone')}
+"
+        f"📧 Email: {data.get('email')}"
+    )
+    await bot.send_message(user_id, "✅ Спасибо! Мы свяжемся с вами в течение 24 часов.")
+    await bot.send_message(int(os.getenv("ADMIN_CHAT_ID", user_id)), summary)
+    user_state.pop(user_id, None)
