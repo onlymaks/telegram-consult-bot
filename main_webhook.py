@@ -89,8 +89,7 @@ async def start_topics(message: types.Message):
     await send_topic_selection(user_id)
 
 
-        await bot.send_message(user_id, "📌 Темы загружены...")
-
+        
     if message_id:
         await bot.edit_message_reply_markup(chat_id=user_id, message_id=message_id, reply_markup=markup)
     else:
