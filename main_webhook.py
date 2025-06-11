@@ -125,6 +125,8 @@ async def ask_topics(message: types.Message):
     user_id = message.from_user.id
     user_state[user_id]["name"] = message.text
     user_state[user_id]["step"] = "topics_select"
+    await ask_topics_inline(message)
+    return
     topics = [
         "Государственные субсидии и налоги",
         "Страхование",
