@@ -165,15 +165,11 @@ async def ask_consent_after_email(message: types.Message):
     markup = InlineKeyboardMarkup().add(
         InlineKeyboardButton("✅ Обязательно для ответа: ДА", callback_data="consent_yes")
     )
-    text = (
-        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.
-"
-        "Ich kann diese jederzeit unter email widerrufen.
+    text = """Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.
+Ich kann diese jederzeit unter email widerrufen.
 
-"
-        "Согласие на обработку и хранение персональных данных.
-"
-        "Мне известно, что я могу в любой момент отозвать это согласие по email."
+Согласие на обработку и хранение персональных данных.
+Мне известно, что я могу в любой момент отозвать это согласие по email.""""
     )
     await message.answer(text, reply_markup=markup)
 
