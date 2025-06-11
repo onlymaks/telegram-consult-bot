@@ -1,4 +1,6 @@
+
 import os
+import re
 from fastapi import FastAPI, Request
 from starlette.responses import Response
 from aiogram import Bot, Dispatcher, types
@@ -72,11 +74,20 @@ async def launch_consult(message):
 @dp.callback_query_handler(lambda c: c.data == "consent_given")
 async def ask_name(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
-    user_state[user_id] = {"step": "topics_select"}
+    user_state[user_id] = {"step": "name"}
     await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, "Пожалуйста, введите ваше имя:")
 
-# Этот блок добавлен после ввода имени
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "name")
+async def validate_name(message: types.Message):
+    user_id = message.from_user.id
+    if len(message.text.strip()) < 3:
+        await message.answer("Имя должно содержать минимум 3 символа. Пожалуйста, введите корректное имя:")
+        return
+    user_state[user_id]["name"] = message.text.strip()
+    user_state[user_id]["topics"] = []
+    user_state[user_id]["step"] = "topics"
+    await send_topic_selection(user_id)
 
 async def send_topic_selection(user_id, message_id=None):
     all_topics = [
@@ -95,19 +106,15 @@ async def send_topic_selection(user_id, message_id=None):
         display = f"✅ {label}" if code in selected else label
         markup.add(InlineKeyboardButton(display, callback_data=f"topic_{code}"))
     markup.add(InlineKeyboardButton("✅ Готово", callback_data="topics_done"))
-
     if message_id:
         await bot.edit_message_reply_markup(chat_id=user_id, message_id=message_id, reply_markup=markup)
     else:
         msg = await bot.send_message(user_id, "Выберите интересующие вас темы (можно несколько):", reply_markup=markup)
-        if user_state.get(user_id):
-            user_state[user_id]["topics_message_id"] = msg.message_id
+        user_state[user_id]["topics_message_id"] = msg.message_id
 
 @dp.callback_query_handler(lambda c: c.data.startswith("topic_"))
 async def toggle_topic(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id not in user_state:
-        user_state[user_id] = {"topics": [], "step": "topics_inline"}
     code = callback_query.data.replace("topic_", "")
     selected = user_state[user_id].get("topics", [])
     if code in selected:
@@ -121,90 +128,19 @@ async def toggle_topic(callback_query: types.CallbackQuery):
         await send_topic_selection(user_id, message_id=message_id)
 
 @dp.callback_query_handler(lambda c: c.data == "topics_done")
-async def topics_done(callback_query: types.CallbackQuery):
+async def ask_messenger(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     user_state[user_id]["step"] = "messenger"
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add(KeyboardButton("Telegram"), KeyboardButton("WhatsApp"), KeyboardButton("Viber"))
     await bot.send_message(user_id, "Выберите удобный мессенджер для связи:", reply_markup=markup)
 
-    await message.answer("Введите номер телефона (формат +49 XXX XXX XX XX):")
-
-    user_state[user_id]["step"] = "email"
-    await message.answer("Введите ваш email:")
-
-
-async def final_thank_you(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
-    data = user_state.get(user_id, {})
-    await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(user_id, "✅ Спасибо! Мы свяжемся с вами в течение 24 часов.")
-
-    # Уведомление администратору
-    topics = ', '.join(data.get("topics", []))
-    summary = (
-        f"🆕 Новая заявка:\n"
-        f"👤 Имя: {data.get('name')}\n"
-        f"📌 Темы: {topics}\n"
-        f"💬 Мессенджер: {data.get('messenger')}\n"
-        f"📱 Телефон: {data.get('phone')}\n"
-        f"📧 Email: {data.get('email')}\n"
-        f"💬 Комментарий: {data.get('comment')}"
-    )
-    await bot.send_message(ADMIN_CHAT_ID, summary)
-
-    # Запись в Google Таблицу
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-        client = gspread.authorize(creds)
-        sheet = client.open(GOOGLE_SHEET_NAME).sheet1
-        sheet.append_row([
-            data.get("name", ""),
-            topics,
-            data.get("messenger", ""),
-            data.get("phone", ""),
-            data.get("email", ""),
-            "ДА",
-            data.get("comment", "")
-        ])
-    except Exception as e:
-        print("Ошибка записи в Google Таблицу:", e)
-
-    user_state.pop(user_id, None)
-
-    await bot.send_message(ADMIN_CHAT_ID, summary)
-
-    # Запись в Google Таблицу
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-        client = gspread.authorize(creds)
-        sheet = client.open(GOOGLE_SHEET_NAME).sheet1
-        sheet.append_row([
-            data.get("name", ""),
-            topics,
-            data.get("messenger", ""),
-            data.get("phone", ""),
-            data.get("email", ""),
-            "ДА",
-            data.get("comment", "")
-        ])
-    except Exception as e:
-        print("Ошибка записи в Google Таблицу:", e)
-
-    user_state.pop(user_id, None)
-
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "topics_select")
-async def start_topics(message: types.Message):
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "messenger")
+async def ask_phone(message: types.Message):
     user_id = message.from_user.id
-    if len(message.text.strip()) < 3:
-        await message.answer("Имя должно содержать минимум 3 символа. Пожалуйста, введите корректное имя:")
-        return
-    user_state[user_id]["name"] = message.text.strip()
-    user_state[user_id]["topics"] = []
-    user_state[user_id]["step"] = "topics_inline"
-    await send_topic_selection(user_id)
+    user_state[user_id]["messenger"] = message.text
+    user_state[user_id]["step"] = "phone"
+    await message.answer("Введите номер телефона (формат +49 XXX XXX XX XX):")
 
 @dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "phone")
 async def validate_phone(message: types.Message):
@@ -219,7 +155,6 @@ async def validate_phone(message: types.Message):
 
 @dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "email")
 async def validate_email(message: types.Message):
-    import re
     user_id = message.from_user.id
     email = message.text.strip()
     if not re.match(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
@@ -238,3 +173,39 @@ async def validate_email(message: types.Message):
         "Нажмите «✅ Я согласен», чтобы подтвердить:"
     )
     await message.answer(text, reply_markup=markup)
+
+@dp.callback_query_handler(lambda c: c.data == "consent_yes")
+async def ask_comment(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    user_state[user_id]["step"] = "comment"
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(user_id, "Добавьте комментарий (необязательно, можно отправить -):")
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "comment")
+async def save_and_thank(message: types.Message):
+    user_id = message.from_user.id
+    user_state[user_id]["comment"] = message.text
+    data = user_state[user_id]
+    await message.answer("✅ Спасибо! Мы свяжемся с вами в течение 24 часов.")
+    topics = ', '.join(data.get("topics", []))
+    summary = (
+        f"🆕 Новая заявка:\n"
+        f"👤 Имя: {data.get('name')}\n"
+        f"📌 Темы: {topics}\n"
+        f"💬 Мессенджер: {data.get('messenger')}\n"
+        f"📱 Телефон: {data.get('phone')}\n"
+        f"📧 Email: {data.get('email')}\n"
+        f"💬 Комментарий: {data.get('comment')}"
+    )
+    await bot.send_message(ADMIN_CHAT_ID, summary)
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+        client = gspread.authorize(creds)
+        sheet = client.open(GOOGLE_SHEET_NAME).sheet1
+        sheet.append_row([
+            data.get("name", ""), topics, data.get("messenger", ""), data.get("phone", ""), data.get("email", ""), "ДА", data.get("comment", "")
+        ])
+    except Exception as e:
+        print("Ошибка записи в Google Таблицу:", e)
+    user_state.pop(user_id, None)
