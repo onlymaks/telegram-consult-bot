@@ -1,254 +1,129 @@
-import os
-from fastapi import FastAPI, Request
-from starlette.responses import Response
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
-from aiogram.utils import json
+
+import logging
+import re
 import gspread
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.utils import executor
+from fastapi import FastAPI, Request
 from oauth2client.service_account import ServiceAccountCredentials
 
-API_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_HOST = os.getenv("WEBHOOK_URL")
-WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
-WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
-WEBAPP_PORT = int(os.getenv("PORT", 8000))
-ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
-GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME")
+API_TOKEN = "PLACEHOLDER"
+GOOGLE_SHEET_NAME = "Заявки консультации"
+GOOGLE_SHEET_COLUMNS = ["ID", "Имя", "Темы", "Телефон", "Email", "Комментарий", "Согласие", "Обработано"]
+
+logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
-Bot.set_current(bot)
-Dispatcher.set_current(dp)
 app = FastAPI()
+
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+client = gspread.authorize(creds)
+sheet = client.open(GOOGLE_SHEET_NAME).sheet1
+
 user_state = {}
 
-@app.get("/")
-async def root():
-    return {"status": "OK — бот запущен"}
-
-@app.on_event("startup")
-async def on_startup():
-    await bot.set_webhook(WEBHOOK_URL)
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    await bot.delete_webhook()
-
-@app.post(WEBHOOK_PATH)
-async def webhook_handler(request: Request):
-    data = await request.body()
-    update = types.Update(**json.loads(data.decode("utf-8")))
+@app.post("/webhook/{token}")
+async def webhook_handler(request: Request, token: str):
+    update = types.Update(**(await request.json()))
     await dp.process_update(update)
-    return Response(status_code=200)
+    return {"status": "ok"}
 
 @dp.message_handler(commands=["start"])
-async def handle_start(message: types.Message):
-    args = message.get_args()
-    if args == "consult":
-        await launch_consult(message)
-    else:
-        markup = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("📅 Записаться на консультацию", callback_data="open_consult")
-        )
-        await message.answer("Выберите действие:", reply_markup=markup)
-
-@dp.callback_query_handler(lambda c: c.data == "open_consult")
-async def handle_consult_button(callback_query: types.CallbackQuery):
-    await bot.answer_callback_query(callback_query.id)
-    await launch_consult(callback_query.message)
-
-async def launch_consult(message):
-    markup = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("✅ Я согласен", callback_data="consent_given")
-    )
-    text = (
-        "👋 Добро пожаловать! Этот бот поможет вам записаться на консультацию.\n\n"
-        "📌 Мы соблюдаем правила обработки персональных данных (Datenschutz). "
-        "Вы можете отозвать согласие в любой момент.\n\n"
-        "Пожалуйста, подтвердите согласие, чтобы продолжить:"
-    )
-    await bot.send_message(message.chat.id, text, reply_markup=markup)
-
-@dp.callback_query_handler(lambda c: c.data == "consent_given")
-async def ask_name(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
-    user_state[user_id] = {"step": "topics_select"}
-    await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(user_id, "Пожалуйста, введите ваше имя:")
-
-# Этот блок добавлен после ввода имени
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "topics_select")
-async def start_topics(message: types.Message):
+async def start_handler(message: types.Message):
     user_id = message.from_user.id
-    user_state[user_id]["name"] = message.text
-    user_state[user_id]["topics"] = []
-    user_state[user_id]["step"] = "topics_inline"
-    await send_topic_selection(user_id)
+    user_state[user_id] = {"step": "name"}
+    await bot.send_message(user_id, "👋 Привет! Введите ваше имя:")
 
-async def send_topic_selection(user_id, message_id=None):
-    all_topics = [
-        ("A. Дотации и налоговая экономия", "A"),
-        ("B. Страховки (авто, мед, адвокат)", "B"),
-        ("C. Накопления на детей", "C"),
-        ("D. Пенсионные планы и дотации", "D"),
-        ("E. Кредиты / Недвижимость", "E"),
-        ("F. Инвестиции и вложения", "F"),
-        ("G. Личные расходы", "G"),
-        ("J. Дополнительный доход", "J")
-    ]
-    markup = InlineKeyboardMarkup(row_width=1)
-    selected = user_state.get(user_id, {}).get("topics", [])
-    for label, code in all_topics:
-        display = f"✅ {label}" if code in selected else label
-        markup.add(InlineKeyboardButton(display, callback_data=f"topic_{code}"))
-    markup.add(InlineKeyboardButton("✅ Готово", callback_data="topics_done"))
-
-    if message_id:
-        await bot.edit_message_reply_markup(chat_id=user_id, message_id=message_id, reply_markup=markup)
-    else:
-        msg = await bot.send_message(user_id, "Выберите интересующие вас темы (можно несколько):", reply_markup=markup)
-        if user_state.get(user_id):
-            user_state[user_id]["topics_message_id"] = msg.message_id
-
-@dp.callback_query_handler(lambda c: c.data.startswith("topic_"))
-async def toggle_topic(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
+@dp.message_handler(lambda message: message.text)
+async def process_input(message: types.Message):
+    user_id = message.from_user.id
+    text = message.text.strip()
     if user_id not in user_state:
-        user_state[user_id] = {"topics": [], "step": "topics_inline"}
-    code = callback_query.data.replace("topic_", "")
-    selected = user_state[user_id].get("topics", [])
-    if code in selected:
-        selected.remove(code)
-    else:
-        selected.append(code)
-    user_state[user_id]["topics"] = selected
-    await bot.answer_callback_query(callback_query.id)
-    message_id = user_state[user_id].get("topics_message_id")
-    if message_id:
-        await send_topic_selection(user_id, message_id=message_id)
+        user_state[user_id] = {"step": "name"}
 
-@dp.callback_query_handler(lambda c: c.data == "topics_done")
-async def topics_done(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
-    user_state[user_id]["step"] = "messenger"
-    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    markup.add(KeyboardButton("Telegram"), KeyboardButton("WhatsApp"), KeyboardButton("Viber"))
-    await bot.send_message(user_id, "Выберите удобный мессенджер для связи:", reply_markup=markup)
+    step = user_state[user_id]["step"]
 
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "messenger")
-async def ask_phone(message: types.Message):
-    user_id = message.from_user.id
-    user_state[user_id]["messenger"] = message.text
-    user_state[user_id]["step"] = "phone"
-    await message.answer("Введите номер телефона (формат +49 XXX XXX XX XX):")
+    if step == "name":
+        if len(text) < 3:
+            await message.answer("❗ Некорректное имя. Введите ещё раз.")
+            return
+        user_state[user_id]["name"] = text
+        user_state[user_id]["step"] = "topics"
+        keyboard = InlineKeyboardMarkup(row_width=2)
+        keyboard.add(
+            InlineKeyboardButton("📊 Финансовое планирование", callback_data="topic:Финансовое планирование"),
+            InlineKeyboardButton("🏡 Ипотека", callback_data="topic:Ипотека"),
+            InlineKeyboardButton("💼 Страхование", callback_data="topic:Страхование"),
+            InlineKeyboardButton("🇩🇪 Переезд в Германию", callback_data="topic:Переезд"),
+            InlineKeyboardButton("✅ Готово", callback_data="done_topics")
+        )
+        await message.answer("Выберите интересующие темы (можно несколько):", reply_markup=keyboard)
 
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "phone")
-async def ask_email(message: types.Message):
-    user_id = message.from_user.id
-    user_state[user_id]["phone"] = message.text
-    user_state[user_id]["step"] = "email"
-    await message.answer("Введите ваш email:")
+    elif step == "phone":
+        if not text.startswith("+49") or not re.match(r"^\+49\d{7,}$", text):
+            await message.answer("❗ Неверный формат телефона. Введите в формате +49...")
+            return
+        user_state[user_id]["phone"] = text
+        user_state[user_id]["step"] = "email"
+        await message.answer("✉️ Введите ваш Email:")
 
+    elif step == "email":
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", text):
+            await message.answer("❗ Неверный формат Email. Попробуйте снова:")
+            return
+        user_state[user_id]["email"] = text
+        user_state[user_id]["step"] = "datenschutz"
+        text_ds = (
+            "📄 Datenschutzerklärung.
+"
+            "Einverständniserklärung in die Erhebung und Verarbeitung von Daten. "
+            "Ich kann diese jederzeit unter email widerrufen.
 
-async def final_thank_you(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
-    data = user_state.get(user_id, {})
-    await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(user_id, "✅ Спасибо! Мы свяжемся с вами в течение 24 часов.")
+"
+            "Согласие на обработку и хранение персональных данных. "
+            "Мне известно, что я могу в любой момент отозвать это согласие по email."
+        )
+        button = InlineKeyboardMarkup().add(InlineKeyboardButton("✅ Я согласен", callback_data="agree"))
+        await message.answer(text_ds, reply_markup=button)
 
-    # Уведомление администратору
-    topics = ', '.join(data.get("topics", []))
-    summary = (
-        f"🆕 Новая заявка:\n"
-        f"👤 Имя: {data.get('name')}\n"
-        f"📌 Темы: {topics}\n"
-        f"💬 Мессенджер: {data.get('messenger')}\n"
-        f"📱 Телефон: {data.get('phone')}\n"
-        f"📧 Email: {data.get('email')}\n"
-        f"💬 Комментарий: {data.get('comment')}"
-    )
-    await bot.send_message(ADMIN_CHAT_ID, summary)
-
-    # Запись в Google Таблицу
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-        client = gspread.authorize(creds)
-        sheet = client.open(GOOGLE_SHEET_NAME).sheet1
-        sheet.append_row([
+    elif step == "comment":
+        user_state[user_id]["comment"] = text
+        data = user_state[user_id]
+        row = [
+            user_id,
             data.get("name", ""),
-            topics,
-            data.get("messenger", ""),
+            ", ".join(data.get("topics", [])),
             data.get("phone", ""),
             data.get("email", ""),
-            "ДА",
-            data.get("comment", "")
-        ])
-    except Exception as e:
-        print("Ошибка записи в Google Таблицу:", e)
+            data.get("comment", ""),
+            "Да",
+            ""
+        ]
+        sheet.append_row(row)
+        await message.answer("🎉 Спасибо! Ваша заявка принята. Мы свяжемся с вами.")
 
-    user_state.pop(user_id, None)
+@dp.callback_query_handler(lambda c: c.data.startswith("topic:"))
+async def topic_handler(callback_query: types.CallbackQuery):
+    topic = callback_query.data.split(":", 1)[1]
+    user_id = callback_query.from_user.id
+    topics = user_state[user_id].setdefault("topics", [])
+    if topic not in topics:
+        topics.append(topic)
+    await callback_query.answer(f"Добавлено: {topic}")
 
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "email")
-async def ask_consent(message: types.Message):
-    user_id = message.from_user.id
-    user_state[user_id]["email"] = message.text
-    user_state[user_id]["step"] = "consent"
-    markup = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("✅ Я согласен", callback_data="consent_yes")
-    )
-    text = (
-        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.\n"
-        "Ich kann diese jederzeit unter email widerrufen.\n\n"
-        "Согласие на обработку и хранение персональных данных.\n"
-        "Мне известно, что я могу в любой момент отозвать это согласие по email.\n\n"
-        "Нажмите «✅ Я согласен», чтобы подтвердить:"
-    )
-    await message.answer(text, reply_markup=markup)
+@dp.callback_query_handler(lambda c: c.data == "done_topics")
+async def done_topics_handler(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    user_state[user_id]["step"] = "phone"
+    await bot.send_message(user_id, "📞 Введите ваш номер телефона (начинается с +49):")
 
-@dp.callback_query_handler(lambda c: c.data == "consent_yes")
-async def ask_comment(callback_query: types.CallbackQuery):
+@dp.callback_query_handler(lambda c: c.data == "agree")
+async def agree_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     user_state[user_id]["step"] = "comment"
-    await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(user_id, "Добавьте комментарий (необязательно, можно отправить -):")
+    await bot.send_message(user_id, "📝 Оставьте комментарий (если есть):")
 
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "comment")
-async def final_thank_you(message: types.Message):
-    user_id = message.from_user.id
-    user_state[user_id]["comment"] = message.text
-    data = user_state.get(user_id, {})
-    await message.answer("✅ Спасибо! Мы свяжемся с вами в течение 24 часов.")
-
-    # Уведомление администратору
-    topics = ', '.join(data.get("topics", []))
-    summary = (
-        f"🆕 Новая заявка:\n"
-        f"👤 Имя: {data.get('name')}\n"
-        f"📌 Темы: {topics}\n"
-        f"💬 Мессенджер: {data.get('messenger')}\n"
-        f"📱 Телефон: {data.get('phone')}\n"
-        f"📧 Email: {data.get('email')}\n"
-        f"💬 Комментарий: {data.get('comment')}"
-    )
-    await bot.send_message(ADMIN_CHAT_ID, summary)
-
-    # Запись в Google Таблицу
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-        client = gspread.authorize(creds)
-        sheet = client.open(GOOGLE_SHEET_NAME).sheet1
-        sheet.append_row([
-            data.get("name", ""),
-            topics,
-            data.get("messenger", ""),
-            data.get("phone", ""),
-            data.get("email", ""),
-            "ДА",
-            data.get("comment", "")
-        ])
-    except Exception as e:
-        print("Ошибка записи в Google Таблицу:", e)
-
-    user_state.pop(user_id, None)
+app = app
