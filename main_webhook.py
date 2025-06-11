@@ -72,12 +72,12 @@ async def launch_consult(message):
 @dp.callback_query_handler(lambda c: c.data == "consent_given")
 async def ask_name(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
-    user_state[user_id] = {"step": "topics_select"}
+    user_state[user_id] = {"step": "name"}
     await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, "Пожалуйста, введите ваше имя:")
 
 # Этот блок добавлен после ввода имени
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "topics_select")
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "name")
 async def start_topics(message: types.Message):
     user_id = message.from_user.id
     if len(message.text.strip()) < 3:
@@ -86,6 +86,7 @@ async def start_topics(message: types.Message):
     user_state[user_id]["name"] = message.text.strip()
     user_state[user_id]["topics"] = []
     user_state[user_id]["step"] = "topics_select"
+    await send_topic_selection(user_id)
     await send_topic_selection(user_id)
 
 
