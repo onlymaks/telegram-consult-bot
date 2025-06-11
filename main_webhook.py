@@ -96,7 +96,7 @@ async def ask_topics_inline(message: types.Message):
         ("Дети", "t9"),
         ("Доход", "t10")
     ]
-    markup = InlineKeyboardMarkup(row_width=2)
+    markup = InlineKeyboardMarkup(row_width=1)
     for name, code in topics:
         markup.insert(InlineKeyboardButton(name, callback_data=f"topic_{code}"))
     markup.add(InlineKeyboardButton("✅ Готово", callback_data="topics_done"))
@@ -140,7 +140,7 @@ async def ask_topics(message: types.Message):
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     for topic in topics:
         markup.add(KeyboardButton(topic))
-    await message.answer("Выберите интересующие вас темы (по одной):", reply_markup=markup)
+    
 
 @dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "topics")
 async def ask_messenger(message: types.Message):
