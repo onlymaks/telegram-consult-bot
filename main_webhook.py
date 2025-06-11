@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI, Request
 from starlette.responses import Response
 from aiogram import Bot, Dispatcher, types
+from aiogram.utils import json
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_HOST = os.getenv("WEBHOOK_URL")
@@ -16,6 +17,10 @@ dp = Dispatcher(bot)
 
 app = FastAPI()
 
+@app.get("/")
+async def root():
+    return {"status": "OK — бот запущен"}
+
 @app.on_event("startup")
 async def on_startup():
     await bot.set_webhook(WEBHOOK_URL)
@@ -26,7 +31,7 @@ async def on_shutdown():
 
 @app.post(WEBHOOK_PATH)
 async def webhook_handler(request: Request):
-    body = await request.body()
-    update = types.Update.de_json(body.decode("utf-8"))
+    data = await request.body()
+    update = types.Update(**json.loads(data.decode("utf-8")))
     await dp.process_update(update)
     return Response(status_code=200)
