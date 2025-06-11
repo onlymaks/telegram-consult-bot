@@ -77,13 +77,6 @@ async def ask_name(callback_query: types.CallbackQuery):
     await bot.send_message(user_id, "Пожалуйста, введите ваше имя:")
 
 # Этот блок добавлен после ввода имени
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "topics_select")
-async def start_topics(message: types.Message):
-    user_id = message.from_user.id
-    user_state[user_id]["name"] = message.text
-    user_state[user_id]["topics"] = []
-    user_state[user_id]["step"] = "topics_inline"
-    await send_topic_selection(user_id)
 
 async def send_topic_selection(user_id, message_id=None):
     all_topics = [
@@ -135,17 +128,8 @@ async def topics_done(callback_query: types.CallbackQuery):
     markup.add(KeyboardButton("Telegram"), KeyboardButton("WhatsApp"), KeyboardButton("Viber"))
     await bot.send_message(user_id, "Выберите удобный мессенджер для связи:", reply_markup=markup)
 
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "messenger")
-async def ask_phone(message: types.Message):
-    user_id = message.from_user.id
-    user_state[user_id]["messenger"] = message.text
-    user_state[user_id]["step"] = "phone"
     await message.answer("Введите номер телефона (формат +49 XXX XXX XX XX):")
 
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "phone")
-async def ask_email(message: types.Message):
-    user_id = message.from_user.id
-    user_state[user_id]["phone"] = message.text
     user_state[user_id]["step"] = "email"
     await message.answer("Введите ваш email:")
 
@@ -189,48 +173,6 @@ async def final_thank_you(callback_query: types.CallbackQuery):
 
     user_state.pop(user_id, None)
 
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "email")
-async def ask_consent(message: types.Message):
-    user_id = message.from_user.id
-    user_state[user_id]["email"] = message.text
-    user_state[user_id]["step"] = "consent"
-    markup = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("✅ Я согласен", callback_data="consent_yes")
-    )
-    text = (
-        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.\n"
-        "Ich kann diese jederzeit unter email widerrufen.\n\n"
-        "Согласие на обработку и хранение персональных данных.\n"
-        "Мне известно, что я могу в любой момент отозвать это согласие по email.\n\n"
-        "Нажмите «✅ Я согласен», чтобы подтвердить:"
-    )
-    await message.answer(text, reply_markup=markup)
-
-@dp.callback_query_handler(lambda c: c.data == "consent_yes")
-async def ask_comment(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
-    user_state[user_id]["step"] = "comment"
-    await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(user_id, "Добавьте комментарий (необязательно, можно отправить -):")
-
-@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "comment")
-async def final_thank_you(message: types.Message):
-    user_id = message.from_user.id
-    user_state[user_id]["comment"] = message.text
-    data = user_state.get(user_id, {})
-    await message.answer("✅ Спасибо! Мы свяжемся с вами в течение 24 часов.")
-
-    # Уведомление администратору
-    topics = ', '.join(data.get("topics", []))
-    summary = (
-        f"🆕 Новая заявка:\n"
-        f"👤 Имя: {data.get('name')}\n"
-        f"📌 Темы: {topics}\n"
-        f"💬 Мессенджер: {data.get('messenger')}\n"
-        f"📱 Телефон: {data.get('phone')}\n"
-        f"📧 Email: {data.get('email')}\n"
-        f"💬 Комментарий: {data.get('comment')}"
-    )
     await bot.send_message(ADMIN_CHAT_ID, summary)
 
     # Запись в Google Таблицу
@@ -252,3 +194,47 @@ async def final_thank_you(message: types.Message):
         print("Ошибка записи в Google Таблицу:", e)
 
     user_state.pop(user_id, None)
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "topics_select")
+async def start_topics(message: types.Message):
+    user_id = message.from_user.id
+    if len(message.text.strip()) < 3:
+        await message.answer("Имя должно содержать минимум 3 символа. Пожалуйста, введите корректное имя:")
+        return
+    user_state[user_id]["name"] = message.text.strip()
+    user_state[user_id]["topics"] = []
+    user_state[user_id]["step"] = "topics_inline"
+    await send_topic_selection(user_id)
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "phone")
+async def validate_phone(message: types.Message):
+    user_id = message.from_user.id
+    phone = message.text.strip()
+    if not phone.startswith("+49") or len(phone) < 10:
+        await message.answer("❌ Номер должен начинаться с +49 и содержать не менее 10 символов. Пожалуйста, введите корректный номер:")
+        return
+    user_state[user_id]["phone"] = phone
+    user_state[user_id]["step"] = "email"
+    await message.answer("Введите ваш email:")
+
+@dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "email")
+async def validate_email(message: types.Message):
+    import re
+    user_id = message.from_user.id
+    email = message.text.strip()
+    if not re.match(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        await message.answer("❌ Некорректный формат email. Пожалуйста, введите действительный адрес:")
+        return
+    user_state[user_id]["email"] = email
+    user_state[user_id]["step"] = "consent"
+    markup = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("✅ Я согласен", callback_data="consent_yes")
+    )
+    text = (
+        "Datenschutzerklärung. Einverständniserklärung in die Erhebung und Verarbeitung von Daten.\n"
+        "Ich kann diese jederzeit unter email widerrufen.\n\n"
+        "Согласие на обработку и хранение персональных данных.\n"
+        "Мне известно, что я могу в любой момент отозвать это согласие по email.\n\n"
+        "Нажмите «✅ Я согласен», чтобы подтвердить:"
+    )
+    await message.answer(text, reply_markup=markup)
