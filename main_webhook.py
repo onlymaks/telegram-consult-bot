@@ -77,8 +77,9 @@ async def ask_name(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, "Пожалуйста, введите ваше имя:")
 
+# Этот блок добавлен после ввода имени
 @dp.message_handler(lambda m: user_state.get(m.from_user.id, {}).get("step") == "topics_select")
-async def ask_topics_inline(message: types.Message):
+async def start_topics(message: types.Message):
     user_id = message.from_user.id
     user_state[user_id]["name"] = message.text
     user_state[user_id]["topics"] = []
