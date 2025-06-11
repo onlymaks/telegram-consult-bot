@@ -57,8 +57,28 @@ async def handle_consult_button(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await launch_consult(callback_query.message)
 
+
 async def launch_consult(message):
+    user_id = message.from_user.id if hasattr(message, "from_user") else message.chat.id
+    if user_id in user_state and user_state[user_id].get("step") == "comment":
+        await bot.send_message(user_id, "⏳ Вы уже оставили заявку. Мы скоро свяжемся с вами.")
+        return
     markup = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("✅ Я согласен", callback_data="consent_given")
+    )
+    text = (
+        "👋 Добро пожаловать! Этот бот поможет вам записаться на консультацию.
+
+"
+        "📌 Мы соблюдаем правила обработки персональных данных (Datenschutz). "
+        "Вы можете отозвать согласие в любой момент.
+
+"
+        "Пожалуйста, подтвердите согласие, чтобы продолжить:"
+    )
+    await bot.send_message(message.chat.id, text, reply_markup=markup)
+
+
         InlineKeyboardButton("✅ Я согласен", callback_data="consent_given")
     )
     text = (
@@ -72,6 +92,9 @@ async def launch_consult(message):
 @dp.callback_query_handler(lambda c: c.data == "consent_given")
 async def ask_name(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
+if user_id in user_state and user_state[user_id].get("step") == "comment":
+        await bot.answer_callback_query(callback_query.id, text="⏳ Вы уже оставили заявку.")
+        return
     user_state[user_id] = {"step": "topics_select"}
     await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, "Пожалуйста, введите ваше имя:")
@@ -113,6 +136,9 @@ async def send_topic_selection(user_id, message_id=None):
 @dp.callback_query_handler(lambda c: c.data.startswith("topic_"))
 async def toggle_topic(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
+if user_id in user_state and user_state[user_id].get("step") == "comment":
+        await bot.answer_callback_query(callback_query.id, text="⏳ Вы уже оставили заявку.")
+        return
     if user_id not in user_state:
         user_state[user_id] = {"topics": [], "step": "topics_inline"}
     code = callback_query.data.replace("topic_", "")
@@ -130,6 +156,9 @@ async def toggle_topic(callback_query: types.CallbackQuery):
 @dp.callback_query_handler(lambda c: c.data == "topics_done")
 async def topics_done(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
+if user_id in user_state and user_state[user_id].get("step") == "comment":
+        await bot.answer_callback_query(callback_query.id, text="⏳ Вы уже оставили заявку.")
+        return
     user_state[user_id]["step"] = "messenger"
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add(KeyboardButton("Telegram"), KeyboardButton("WhatsApp"), KeyboardButton("Viber"))
@@ -156,6 +185,9 @@ async def ask_email(message: types.Message):
 
 async def final_thank_you(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
+if user_id in user_state and user_state[user_id].get("step") == "comment":
+        await bot.answer_callback_query(callback_query.id, text="⏳ Вы уже оставили заявку.")
+        return
     data = user_state.get(user_id, {})
     await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, "✅ Спасибо! Мы свяжемся с вами в течение 24 часов.")
@@ -210,6 +242,9 @@ async def final_thank_you(callback_query: types.CallbackQuery):
 @dp.callback_query_handler(lambda c: c.data == "consent_yes")
 async def ask_comment(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
+if user_id in user_state and user_state[user_id].get("step") == "comment":
+        await bot.answer_callback_query(callback_query.id, text="⏳ Вы уже оставили заявку.")
+        return
     user_state[user_id]["step"] = "comment"
     await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, "Добавьте комментарий (необязательно, можно отправить -):")
